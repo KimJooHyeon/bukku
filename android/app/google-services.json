@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "96977680678",
+    "project_id": "bukku-app-2026",
+    "storage_bucket": "bukku-app-2026.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:96977680678:android:957ea84059dd29e17869e7",
+        "android_client_info": {
+          "package_name": "com.example.bukku"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBaC5TocT4ve1IDIeNwHoZdcmF3zK8843Y"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
