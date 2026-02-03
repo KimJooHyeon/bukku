@@ -2,10 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
-import 'package:screenshot/screenshot.dart';
+
 import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb; // [New]
+import 'dart:ui' as ui;
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 
 import '../../models/book_model.dart';
 import '../../viewmodels/report_view_model.dart';
@@ -21,8 +25,6 @@ class ReportView extends ConsumerStatefulWidget {
 }
 
 class _ReportViewState extends ConsumerState<ReportView> {
-  final ScreenshotController _screenshotController = ScreenshotController();
-
   // [Action] 통합 필터 시트 표시
   void _showFilterSheet() {
     showModalBottomSheet(
@@ -44,6 +46,8 @@ class _ReportViewState extends ConsumerState<ReportView> {
     );
   }
 
+  // ... (existing imports)
+
   // 통합 영수증 발급
   void _showSummaryReceipt(List<Book> books, int totalPages, int totalBooks) {
     if (books.isEmpty) {
@@ -55,69 +59,129 @@ class _ReportViewState extends ConsumerState<ReportView> {
 
     final filter = ref.read(reportViewModelProvider);
     final periodTitle = filter.displayTitle.toUpperCase();
+    final GlobalKey globalKey = GlobalKey(); // Capture Key
 
     showDialog(
       context: context,
       builder: (context) {
-        return Dialog(
-          backgroundColor: Colors.transparent,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Screenshot(
-                controller: _screenshotController,
-                child: ReceiptWidget(
-                  books: books,
-                  periodText: periodTitle,
-                  totalBooks: totalBooks,
-                  totalPages: totalPages,
-                ),
-              ),
-              const SizedBox(height: 20),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+        bool isSharing = false; // Local loading state for dialog
+
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return Dialog(
+              backgroundColor: Colors.transparent,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  ElevatedButton.icon(
-                    onPressed: () => context.pop(),
-                    icon: const Icon(Icons.close),
-                    label: const Text("닫기"),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      foregroundColor: Colors.black,
+                  // 1. Capture Target
+                  RepaintBoundary(
+                    key: globalKey,
+                    child: ReceiptWidget(
+                      books: books,
+                      periodText: periodTitle,
+                      totalBooks: totalBooks,
+                      totalPages: totalPages,
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  ElevatedButton.icon(
-                    onPressed: () => _shareReceipt(periodTitle),
-                    icon: const Icon(Icons.share),
-                    label: const Text("공유하기"),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.black,
-                      foregroundColor: Colors.white,
-                    ),
+                  const SizedBox(height: 20),
+
+                  // 2. Actions
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      ElevatedButton.icon(
+                        onPressed: isSharing ? null : () => context.pop(),
+                        icon: const Icon(Icons.close),
+                        label: const Text("닫기"),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.white,
+                          foregroundColor: Colors.black,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+
+                      // Share Button with Loading State
+                      ElevatedButton.icon(
+                        onPressed:
+                            isSharing
+                                ? null
+                                : () async {
+                                  setState(() => isSharing = true);
+                                  await _captureAndShareReceipt(
+                                    globalKey,
+                                    periodTitle,
+                                  );
+                                  // Check if mounted before updating state, though dialog might remain open
+                                  if (context.mounted) {
+                                    setState(() => isSharing = false);
+                                  }
+                                },
+                        icon:
+                            isSharing
+                                ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                                : const Icon(Icons.share),
+                        label:
+                            isSharing
+                                ? const Text("저장 중...")
+                                : const Text("공유하기"),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.black,
+                          foregroundColor: Colors.white,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
-            ],
-          ),
+            );
+          },
         );
       },
     );
   }
 
-  Future<void> _shareReceipt(String title) async {
+  Future<void> _captureAndShareReceipt(GlobalKey key, String title) async {
     try {
-      final imageBytes = await _screenshotController.capture();
-      if (imageBytes == null) return;
+      // 1. Capture RenderObject
+      final boundary =
+          key.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+      if (boundary == null) return;
 
-      final directory = await getTemporaryDirectory();
-      final imagePath =
-          await File('${directory.path}/summary_receipt.png').create();
-      await imagePath.writeAsBytes(imageBytes);
+      // 2. Convert to Image
+      final image = await boundary.toImage(pixelRatio: 3.0); // High resolution
+      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+      final pngBytes = byteData?.buffer.asUint8List();
 
-      await Share.shareXFiles([
-        XFile(imagePath.path),
-      ], text: '나의 독서 결산 - $title');
+      if (pngBytes == null) return;
+
+      // 3. Share
+      if (kIsWeb) {
+        // [Web] Create XFile from data directly
+        final xFile = XFile.fromData(
+          pngBytes,
+          mimeType: 'image/png',
+          name: 'summary_receipt.png',
+        );
+
+        await Share.shareXFiles([xFile], text: '나의 독서 결산 - $title');
+      } else {
+        // [Mobile] Save to Temp File
+        final directory = await getTemporaryDirectory();
+        final imagePath =
+            await File('${directory.path}/summary_receipt.png').create();
+        await imagePath.writeAsBytes(pngBytes);
+
+        await Share.shareXFiles([
+          XFile(imagePath.path),
+        ], text: '나의 독서 결산 - $title');
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(
