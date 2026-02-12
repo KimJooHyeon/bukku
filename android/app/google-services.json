@@ -12,7 +12,20 @@
           "package_name": "com.example.bukku"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "96977680678-csf5np09p7pgf05c77ktclge56kmbth3.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.bukku",
+            "certificate_hash": "6c68c255b63c32174b94c80b76b76f40124b2f85"
+          }
+        },
+        {
+          "client_id": "96977680678-tj9jh52ueio14233jf1ttgeetvr12qt9.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyBaC5TocT4ve1IDIeNwHoZdcmF3zK8843Y"
@@ -20,7 +33,19 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "96977680678-tj9jh52ueio14233jf1ttgeetvr12qt9.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "96977680678-25akbua37qh2mgldu17tbm60a20aam32.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.bukku"
+              }
+            }
+          ]
         }
       }
     }

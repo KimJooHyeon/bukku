@@ -7,9 +7,13 @@ import 'views/report/report_view.dart';
 import 'models/book_model.dart';
 // HomeView import removed (MainLayout handles it)
 
+import 'features/auth/presentation/login_screen.dart'; // [New] LoginScreen
+
 final routerConfig = GoRouter(
-  initialLocation: '/',
+  initialLocation: '/login', // [Modified] Start with Login Screen
   routes: [
+    // 0. 로그인 화면
+    GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
     // 1. 홈 화면 (메인 레이아웃: 서재/앨범/리포트/설정 탭 포함)
     GoRoute(path: '/', builder: (context, state) => const MainLayout()),
     // 2. 책 추가 화면
