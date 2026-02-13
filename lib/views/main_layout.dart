@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'library_view.dart'; // [New]
 import 'album_view.dart'; // [New]
 import 'report/report_view.dart';
+import '../features/settings/presentation/settings_screen.dart';
 
 // [State] 현재 탭 인덱스 관리 Provider
 final bottomNavIndexProvider = StateProvider<int>((ref) => 0);
@@ -27,8 +28,8 @@ class MainLayout extends ConsumerWidget {
           // 3. 리포트
           return const ReportView();
         case 3:
-          // 4. 설정 (준비중)
-          return const Center(child: Text("설정 화면 (준비중)"));
+          // 4. 설정
+          return const SettingsScreen();
         default:
           return const LibraryView();
       }
