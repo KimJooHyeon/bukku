@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/book_model.dart';
-import 'book_view_model.dart';
+import '../providers/book_provider.dart';
 import 'package:intl/intl.dart';
 
 enum ReportFilterType { monthly, yearly, custom, all }
@@ -36,11 +36,18 @@ class ReportFilterState {
   }
 }
 
+class ReportItem {
+  final Book book;
+  final ReadingRecord record;
+
+  const ReportItem({required this.book, required this.record});
+}
+
 class ReportStats {
   final ReportFilterState filter;
   final int totalBooks;
   final int totalPages;
-  final List<Book> readBooks;
+  final List<ReportItem> readBooks;
 
   const ReportStats({
     required this.filter,
@@ -97,24 +104,40 @@ final reportViewModelProvider =
 
 // [Provider] 통계 계산 (Computed Data)
 final reportStatsProvider = Provider<AsyncValue<ReportStats>>((ref) {
-  final booksAsync = ref.watch(bookViewModelProvider);
+  final booksAsync = ref.watch(bookListProvider); // Changed provider
   final filter = ref.watch(reportViewModelProvider);
 
   return booksAsync.whenData((books) {
-    // 1. '완독' 상태인 책만 필터링
-    var doneBooks = books.where((b) => b.status == 'DONE').toList();
+    // 1. 모든 독서 기록(완독된 것만)을 추출
+    // Book과 Record를 짝지어서 리스트로 만듦
+    final allRecords = <Map<String, dynamic>>[];
+
+    for (var book in books) {
+      for (var record in book.records) {
+        if (record.finishedAt != null) {
+          allRecords.add({
+            'book': book,
+            'record': record,
+            'date': record.finishedAt!,
+          });
+        }
+      }
+    }
 
     // 2. 기간 필터링
-    doneBooks =
-        doneBooks.where((b) {
-          if (b.finishedAt == null) return false;
-          final date = b.finishedAt!;
+    final filteredItems =
+        allRecords.where((item) {
+          final date = item['date'] as DateTime;
+
+          // 필터 날짜 확인
 
           switch (filter.type) {
             case ReportFilterType.monthly:
+              if (filter.selectedDate == null) return false;
               return date.year == filter.selectedDate!.year &&
                   date.month == filter.selectedDate!.month;
             case ReportFilterType.yearly:
+              if (filter.selectedDate == null) return false;
               return date.year == filter.selectedDate!.year;
             case ReportFilterType.custom:
               if (filter.customRange == null) return true;
@@ -128,17 +151,33 @@ final reportStatsProvider = Provider<AsyncValue<ReportStats>>((ref) {
         }).toList();
 
     // 3. 통계 계산
-    final totalBooks = doneBooks.length;
-    final totalPages = doneBooks.fold<int>(
+    final totalBooks = filteredItems.length; // 독서 횟수 기준
+    final totalPages = filteredItems.fold<int>(
       0,
-      (sum, book) => sum + book.totalUnit,
+      (sum, item) => sum + (item['book'] as Book).totalUnit,
+    );
+
+    // 리포트용 아이템 리스트 생성
+    final readBooks =
+        filteredItems
+            .map(
+              (item) => ReportItem(
+                book: item['book'] as Book,
+                record: item['record'] as ReadingRecord,
+              ),
+            )
+            .toList();
+
+    // 최신순 정렬 (선택사항, 날짜 내림차순)
+    readBooks.sort(
+      (a, b) => b.record.finishedAt!.compareTo(a.record.finishedAt!),
     );
 
     return ReportStats(
       filter: filter,
       totalBooks: totalBooks,
       totalPages: totalPages,
-      readBooks: doneBooks,
+      readBooks: readBooks,
     );
   });
 });

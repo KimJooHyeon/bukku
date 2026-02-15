@@ -3,9 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:phosphor_flutter/phosphor_flutter.dart'; // [New]
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../models/book_model.dart';
-import '../viewmodels/book_view_model.dart';
+import '../providers/book_provider.dart';
 
 class AddBookView extends ConsumerStatefulWidget {
   const AddBookView({super.key});
@@ -22,9 +22,8 @@ class _AddBookViewState extends ConsumerState<AddBookView> {
   final TextEditingController _authorController = TextEditingController();
   final TextEditingController _totalPageController = TextEditingController();
 
-  // 드롭다운 선택값
-  String _unitType = 'PAGE'; // 기본값: 페이지
-  String _status = 'READING'; // 기본값: 읽는중
+  // 독서 상태 (Enum)
+  BookStatus _status = BookStatus.reading;
 
   // [Image] 선택된 이미지 (Web/Mobile 호환)
   XFile? _selectedImage;
@@ -63,25 +62,39 @@ class _AddBookViewState extends ConsumerState<AddBookView> {
     });
 
     try {
+      final repository = ref.read(bookRepositoryProvider);
+      String coverUrl = '';
+
+      // 1. 이미지 업로드
+      if (_selectedImage != null) {
+        coverUrl = await repository.uploadBookCover(_selectedImage!);
+      }
+
+      // 2. 책 객체 생성
       final newBook = Book(
-        // id는 Firestore에 저장된 후 생성되므로 빈 값으로 둠 (excludeFromToJson 처리됨)
+        // id는 Firestore에 저장된 후 생성되므로 빈 값
         id: '',
         title: _titleController.text,
-        author: _authorController.text,
-        coverUrl: '', // ViewModel 내부에서 처리됨 (upload 후 갱신)
-        unitType: _unitType,
+        author:
+            _titleController.text.isNotEmpty
+                ? _authorController.text
+                : 'Unknown', // 작가 없을 경우 처리? validator가 있으므로 안심
+        coverUrl: coverUrl,
+        // unitType 제거됨 (기본값 사용)
         totalUnit: int.parse(_totalPageController.text),
         currentUnit: 0,
         status: _status,
-        startedAt: DateTime.now(),
-        // [Fix] 완독 상태로 저장 시 완독일 자동 설정
-        finishedAt: _status == 'DONE' ? DateTime.now() : null,
+        records: [
+          ReadingRecord(
+            readCount: 1,
+            startedAt: DateTime.now(),
+            finishedAt: _status == BookStatus.done ? DateTime.now() : null,
+          ),
+        ],
       );
 
-      // [Riverpod] ViewModel을 통해 데이터 저장 (이미지 포함)
-      await ref
-          .read(bookViewModelProvider.notifier)
-          .addBook(newBook, coverImage: _selectedImage);
+      // 3. Firestore 저장
+      await repository.addBook(newBook);
 
       if (mounted) {
         ScaffoldMessenger.of(
@@ -149,7 +162,7 @@ class _AddBookViewState extends ConsumerState<AddBookView> {
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
                                 Icon(
-                                  PhosphorIcons.camera(), // [Changed]
+                                  PhosphorIcons.camera(),
                                   color: Colors.grey,
                                 ),
                                 const SizedBox(height: 8),
@@ -226,59 +239,28 @@ class _AddBookViewState extends ConsumerState<AddBookView> {
               ),
               const SizedBox(height: 24),
 
-              // 4. 기록 단위 & 독서 상태 (행으로 배치)
-              Row(
-                children: [
-                  Expanded(
-                    child: DropdownButtonFormField<String>(
-                      value: _unitType,
-                      decoration: const InputDecoration(
-                        labelText: '기록 단위',
-                        border: OutlineInputBorder(),
-                        filled: true,
-                        fillColor: Colors.white,
-                      ),
-                      items: const [
-                        DropdownMenuItem(value: 'PAGE', child: Text('페이지')),
-                        DropdownMenuItem(
-                          value: 'PERCENT',
-                          child: Text('퍼센트 (%)'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'CHAPTER',
-                          child: Text('챕터 (장)'),
-                        ),
-                      ],
-                      onChanged: (value) {
-                        setState(() {
-                          _unitType = value!;
-                        });
-                      },
-                    ),
+              // 4. 독서 상태 (행으로 배치)
+              DropdownButtonFormField<BookStatus>(
+                value: _status,
+                decoration: const InputDecoration(
+                  labelText: '독서 상태',
+                  border: OutlineInputBorder(),
+                  filled: true,
+                  fillColor: Colors.white,
+                ),
+                items: const [
+                  DropdownMenuItem(
+                    value: BookStatus.reading,
+                    child: Text('읽는 중'),
                   ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: DropdownButtonFormField<String>(
-                      value: _status,
-                      decoration: const InputDecoration(
-                        labelText: '독서 상태',
-                        border: OutlineInputBorder(),
-                        filled: true,
-                        fillColor: Colors.white,
-                      ),
-                      items: const [
-                        DropdownMenuItem(value: 'READING', child: Text('읽는 중')),
-                        DropdownMenuItem(value: 'DONE', child: Text('완독')),
-                        DropdownMenuItem(value: 'WISH', child: Text('찜')),
-                      ],
-                      onChanged: (value) {
-                        setState(() {
-                          _status = value!;
-                        });
-                      },
-                    ),
-                  ),
+                  DropdownMenuItem(value: BookStatus.done, child: Text('완독')),
+                  DropdownMenuItem(value: BookStatus.wish, child: Text('찜')),
                 ],
+                onChanged: (value) {
+                  setState(() {
+                    _status = value!;
+                  });
+                },
               ),
               const SizedBox(height: 32),
 

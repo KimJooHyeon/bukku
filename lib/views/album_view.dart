@@ -3,14 +3,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart'; // [New]
 import '../models/book_model.dart';
-import '../viewmodels/book_view_model.dart';
+import '../providers/book_provider.dart';
 
 class AlbumView extends ConsumerWidget {
   const AlbumView({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final booksAsyncValue = ref.watch(bookViewModelProvider);
+    final booksAsyncValue = ref.watch(bookListProvider);
 
     return Scaffold(
       appBar: AppBar(

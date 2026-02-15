@@ -3,13 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:screenshot/screenshot.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:flutter_rating_bar/flutter_rating_bar.dart'; // [New]
+import 'package:flutter_rating_bar/flutter_rating_bar.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:phosphor_flutter/phosphor_flutter.dart'; // [New]
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'dart:io';
 
 import '../models/book_model.dart';
-import '../viewmodels/book_view_model.dart';
+import '../providers/book_provider.dart';
 import 'widgets/receipt_widget.dart';
 
 class BookDetailView extends ConsumerStatefulWidget {
@@ -67,7 +67,8 @@ class _BookDetailViewState extends ConsumerState<BookDetailView> {
     });
 
     try {
-      await ref.read(bookViewModelProvider.notifier).updateBook(_editingBook);
+      // ViewModel -> Repository 직접 호출로 변경
+      await ref.read(bookRepositoryProvider).updateBook(_editingBook);
 
       if (mounted) {
         ScaffoldMessenger.of(
@@ -77,9 +78,20 @@ class _BookDetailViewState extends ConsumerState<BookDetailView> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('수정 실패: $e')));
+        showDialog(
+          context: context,
+          builder:
+              (context) => AlertDialog(
+                title: const Text("저장 실패"),
+                content: Text("오류가 발생했습니다.\n$e"),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text("확인"),
+                  ),
+                ],
+              ),
+        );
       }
     } finally {
       if (mounted) {
@@ -87,6 +99,62 @@ class _BookDetailViewState extends ConsumerState<BookDetailView> {
           _isLoading = false;
         });
       }
+    }
+  }
+
+  // [N회독] 다음 회독 시작
+  Future<void> _startNextReading() async {
+    final bool? confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text("${_editingBook.readCount + 1}회독 시작"),
+          content: const Text(
+            "현재 독서 기록(완독일, 별점, 메모)을 저장하고\n"
+            "새로운 마음으로 다시 읽기를 시작하시겠습니까?",
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text("취소", style: TextStyle(color: Colors.grey)),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text("시작하기", style: TextStyle(color: Colors.black)),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirm != true) return;
+
+    setState(() {
+      // 1. 새로운 기록 추가 (N+1회독)
+      final newRecord = ReadingRecord(
+        readCount: _editingBook.readCount + 1, // Getter uses records.length
+        startedAt: DateTime.now(),
+        rating: null,
+        review: null,
+      );
+
+      // 2. 리스트 갱신
+      // 기존 records에 새 record 추가
+      final updatedRecords = [..._editingBook.records, newRecord];
+
+      // 3. 새로운 상태로 갱신
+      _editingBook = _editingBook.copyWith(
+        status: BookStatus.reading,
+        currentUnit: 0,
+        records: updatedRecords,
+      );
+    });
+
+    // 바로 저장하지 않고, 편집 상태로 변경함 (사용자가 '변경사항 저장' 눌러야 함)
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("새로운 독서를 시작합니다. '변경사항 저장'을 눌러주세요.")),
+      );
     }
   }
 
@@ -119,9 +187,9 @@ class _BookDetailViewState extends ConsumerState<BookDetailView> {
     });
 
     try {
-      await ref
-          .read(bookViewModelProvider.notifier)
-          .deleteBook(_editingBook.id);
+      // ViewModel -> Repository 직접 호출로 변경
+      await ref.read(bookRepositoryProvider).deleteBook(_editingBook.id);
+
       if (mounted) {
         ScaffoldMessenger.of(
           context,
@@ -194,8 +262,6 @@ class _BookDetailViewState extends ConsumerState<BookDetailView> {
     );
   }
 
-  // ... (Logic same)
-
   @override
   Widget build(BuildContext context) {
     // 배경색: 약간 어두운 크림색
@@ -207,7 +273,8 @@ class _BookDetailViewState extends ConsumerState<BookDetailView> {
         elevation: 0,
         actions: [
           // [Receipt] 영수증 버튼 (완독 시에만)
-          if (_editingBook.status == 'DONE')
+          // Enum 비교로 변경
+          if (_editingBook.status == BookStatus.done)
             IconButton(
               onPressed: _showReceiptDialog,
               icon: Icon(PhosphorIcons.receipt(), color: Colors.black),
@@ -258,7 +325,27 @@ class _BookDetailViewState extends ConsumerState<BookDetailView> {
             ),
             const SizedBox(height: 32),
 
-            // 2. 제목 및 작가 (읽기 전용/수정 가능?) -> 일단 Text로 표시
+            // 2. 제목 및 작가
+            if (_editingBook.readCount > 1)
+              Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.05),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  "${_editingBook.readCount}회독 중 📚",
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87,
+                  ),
+                ),
+              ),
             Text(
               _editingBook.title,
               textAlign: TextAlign.center,
@@ -276,8 +363,8 @@ class _BookDetailViewState extends ConsumerState<BookDetailView> {
             ),
             const SizedBox(height: 40),
 
-            // 3. 독서 상태 변경
-            DropdownButtonFormField<String>(
+            // 3. 독서 상태 변경 (DropdownButtonFormField<BookStatus>)
+            DropdownButtonFormField<BookStatus>(
               value: _editingBook.status,
               decoration: const InputDecoration(
                 labelText: '독서 상태',
@@ -286,28 +373,42 @@ class _BookDetailViewState extends ConsumerState<BookDetailView> {
                 fillColor: Colors.white,
               ),
               items: const [
-                DropdownMenuItem(value: 'READING', child: Text('읽는 중')),
-                DropdownMenuItem(value: 'DONE', child: Text('완독')),
-                DropdownMenuItem(value: 'WISH', child: Text('찜')),
+                DropdownMenuItem(
+                  value: BookStatus.reading,
+                  child: Text('읽는 중'),
+                ),
+                DropdownMenuItem(value: BookStatus.done, child: Text('완독')),
+                DropdownMenuItem(value: BookStatus.wish, child: Text('찜')),
               ],
               onChanged: (value) {
                 if (value != null) {
                   setState(() {
-                    // [Fix] 상태 변경 시 완독일(finishedAt) 자동 처리
+                    // [Fix] 상태 변경 시 완독일(finishedAt) 자동 처리 (현재 기록 업데이트)
                     final now = DateTime.now();
-                    DateTime? newFinishedAt = _editingBook.finishedAt;
 
-                    if (value == 'DONE') {
-                      // 완독으로 변경 시, 날짜가 없으면 현재 시간 입력
-                      newFinishedAt ??= now;
-                    } else {
-                      // 완독이 아니면 날짜 초기화
-                      newFinishedAt = null;
+                    // 현재 기록 복사 및 수정
+                    ReadingRecord? currentRecord = _editingBook.currentRecord;
+                    if (currentRecord != null) {
+                      if (value == BookStatus.done) {
+                        currentRecord = currentRecord.copyWith(
+                          finishedAt: currentRecord.finishedAt ?? now,
+                        );
+                      } else {
+                        currentRecord = currentRecord.copyWith(
+                          finishedAt: null,
+                        );
+                      }
+                    }
+
+                    // 레코드 리스트 업데이트
+                    List<ReadingRecord> records = [..._editingBook.records];
+                    if (records.isNotEmpty && currentRecord != null) {
+                      records.last = currentRecord;
                     }
 
                     _editingBook = _editingBook.copyWith(
                       status: value,
-                      finishedAt: newFinishedAt,
+                      records: records, // 업데이트된 레코드 반영
                     );
                   });
                 }
@@ -315,8 +416,8 @@ class _BookDetailViewState extends ConsumerState<BookDetailView> {
             ),
             const SizedBox(height: 24),
 
-            // 4. 진행률 (Slider + Text Input)
-            if (_editingBook.unitType == 'PAGE') ...[
+            // 4. 진행률 (읽는 중일 때만 표시)
+            if (_editingBook.status == BookStatus.reading) ...[
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -324,76 +425,271 @@ class _BookDetailViewState extends ConsumerState<BookDetailView> {
                     "진행률 (${_editingBook.currentUnit} / ${_editingBook.totalUnit} p)",
                   ),
                   Text(
-                    "${((_editingBook.currentUnit / _editingBook.totalUnit) * 100).toInt()}%",
+                    "${_editingBook.totalUnit > 0 ? ((_editingBook.currentUnit / _editingBook.totalUnit) * 100).toInt() : 0}%",
                   ),
                 ],
               ),
               Slider(
-                value: _editingBook.currentUnit.toDouble(),
+                value: _editingBook.currentUnit.toDouble().clamp(
+                  0.0,
+                  _editingBook.totalUnit.toDouble(),
+                ),
                 min: 0,
-                max: _editingBook.totalUnit.toDouble(),
+                max:
+                    _editingBook.totalUnit.toDouble() > 0
+                        ? _editingBook.totalUnit.toDouble()
+                        : 1.0,
                 activeColor: Colors.black,
                 inactiveColor: Colors.grey[300],
                 onChanged: (value) {
+                  final isCompleted = value >= _editingBook.totalUnit;
                   setState(() {
-                    _editingBook = _editingBook.copyWith(
-                      currentUnit: value.toInt(),
-                    );
+                    // [UX] 100% 도달 시 자동으로 '완독' 처리
+                    if (isCompleted) {
+                      // 현재 기록 완독 처리
+                      final now = DateTime.now();
+                      List<ReadingRecord> records = [..._editingBook.records];
+                      if (records.isNotEmpty) {
+                        records.last = records.last.copyWith(finishedAt: now);
+                      }
+
+                      _editingBook = _editingBook.copyWith(
+                        currentUnit: value.toInt(),
+                        status: BookStatus.done,
+                        records: records,
+                      );
+                    } else {
+                      _editingBook = _editingBook.copyWith(
+                        currentUnit: value.toInt(),
+                      );
+                    }
+                  });
+                },
+              ),
+              const SizedBox(height: 24),
+            ] else if (_editingBook.status == BookStatus.done) ...[
+              // 완독 상태일 때: 완독 날짜 표시 및 되돌리기
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.green.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.green),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          "완독함! 🎉",
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: Colors.green,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          _editingBook.currentRecord?.finishedAt != null
+                              ? "완독일: ${_editingBook.currentRecord?.finishedAt.toString().split(' ')[0]}"
+                              : "날짜 정보 없음",
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                      ],
+                    ),
+                    TextButton.icon(
+                      onPressed: () {
+                        setState(() {
+                          // 취소 시 완독일 제거
+                          List<ReadingRecord> records = [
+                            ..._editingBook.records,
+                          ];
+                          if (records.isNotEmpty) {
+                            records.last = records.last.copyWith(
+                              finishedAt: null,
+                            );
+                          }
+
+                          _editingBook = _editingBook.copyWith(
+                            status: BookStatus.reading,
+                            records: records,
+                          );
+                        });
+                      },
+                      icon: const Icon(Icons.undo, size: 16),
+                      label: const Text("취소"),
+                      style: TextButton.styleFrom(foregroundColor: Colors.grey),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // [N회독] 다음 회독 시작 버튼
+              if (widget.book.status == BookStatus.done)
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: _startNextReading,
+                    icon: const Icon(Icons.auto_stories, size: 18),
+                    label: Text("${_editingBook.readCount + 1}회독 시작하기"),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      foregroundColor: Colors.black,
+                      side: const BorderSide(color: Colors.black),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 32),
+            ],
+
+            // 5. 별점 및 메모 (완독일 때만 표시)
+            if (_editingBook.status == BookStatus.done) ...[
+              const Text(
+                "나의 평가",
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 12),
+
+              // [RatingBar]
+              Center(
+                child: RatingBar.builder(
+                  initialRating: _editingBook.currentRecord?.rating ?? 0.0,
+                  minRating: 0.5,
+                  direction: Axis.horizontal,
+                  allowHalfRating: true, // 0.5 단위 지원
+                  itemCount: 5,
+                  itemPadding: const EdgeInsets.symmetric(horizontal: 4.0),
+                  itemBuilder:
+                      (context, _) => Icon(
+                        PhosphorIcons.star(PhosphorIconsStyle.fill),
+                        color: Colors.amber,
+                      ),
+                  onRatingUpdate: (rating) {
+                    setState(() {
+                      List<ReadingRecord> records = [..._editingBook.records];
+                      if (records.isNotEmpty) {
+                        records.last = records.last.copyWith(rating: rating);
+                      }
+                      _editingBook = _editingBook.copyWith(records: records);
+                    });
+                  },
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // [Memo/Review]
+              TextFormField(
+                initialValue: _editingBook.currentRecord?.review,
+                maxLines: 3,
+                decoration: InputDecoration(
+                  hintText: "이 책에 대한 한 줄 평이나 메모를 남겨보세요.",
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide(color: Colors.grey.shade300),
+                  ),
+                  filled: true,
+                  fillColor: Colors.white,
+                ),
+                onChanged: (value) {
+                  setState(() {
+                    List<ReadingRecord> records = [..._editingBook.records];
+                    if (records.isNotEmpty) {
+                      records.last = records.last.copyWith(review: value);
+                    }
+                    _editingBook = _editingBook.copyWith(records: records);
                   });
                 },
               ),
             ],
 
-            // 5. 별점 및 메모
-            const SizedBox(height: 24),
-            const Text("나의 평가", style: TextStyle(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 12),
+            // 6. 독서 히스토리 (2회독 이상일 때 또는 기록이 있을 때 표시)
+            if (_editingBook.records.length > 1 ||
+                (_editingBook.records.isNotEmpty &&
+                    _editingBook.records.first.finishedAt != null)) ...[
+              const SizedBox(height: 40),
+              const Divider(),
+              const SizedBox(height: 20),
+              const Text(
+                "독서 히스토리",
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 12),
+              ListView.separated(
+                physics: const NeverScrollableScrollPhysics(),
+                shrinkWrap: true,
+                itemCount: _editingBook.records.length,
+                separatorBuilder:
+                    (context, index) => const SizedBox(height: 12),
+                itemBuilder: (context, index) {
+                  // 역순 표시 (최신순)
+                  final recordIndex = _editingBook.records.length - 1 - index;
+                  final record = _editingBook.records[recordIndex];
 
-            // [RatingBar]
-            Center(
-              child: RatingBar.builder(
-                initialRating: _editingBook.rating ?? 0.0,
-                minRating: 0.5,
-                direction: Axis.horizontal,
-                allowHalfRating: true, // 0.5 단위 지원
-                itemCount: 5,
-                itemPadding: const EdgeInsets.symmetric(horizontal: 4.0),
-                itemBuilder:
-                    (context, _) => Icon(
-                      PhosphorIcons.star(PhosphorIconsStyle.fill),
-                      color: Colors.amber,
+                  return Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.grey.shade200),
                     ),
-                onRatingUpdate: (rating) {
-                  setState(() {
-                    _editingBook = _editingBook.copyWith(rating: rating);
-                  });
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              "${record.readCount}회독",
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            if (record.rating != null)
+                              Row(
+                                children: [
+                                  const Icon(
+                                    Icons.star,
+                                    size: 16,
+                                    color: Colors.amber,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    "${record.rating}",
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          "${record.startedAt?.toString().split(' ')[0] ?? '?'} ~ ${record.finishedAt?.toString().split(' ')[0] ?? '읽는 중'}",
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey,
+                          ),
+                        ),
+                        if (record.review != null &&
+                            record.review!.isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          Text(
+                            record.review!,
+                            style: const TextStyle(fontSize: 14),
+                          ),
+                        ],
+                      ],
+                    ),
+                  );
                 },
               ),
-            ),
-            const SizedBox(height: 20),
-
-            // [Memo]
-            TextFormField(
-              initialValue: _editingBook.memo,
-              maxLines: 3,
-              decoration: InputDecoration(
-                hintText: "이 책에 대한 한 줄 평이나 메모를 남겨보세요.",
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(color: Colors.grey.shade300),
-                ),
-                filled: true,
-                fillColor: Colors.white,
-              ),
-              onChanged: (value) {
-                // setState를 매번 호출하면 타이핑마다 렌더링되므로,
-                // 값만 반영하거나 Debounce 처리 권장.
-                // 하지만 여기선 구조상 setState로 로컬 상태 동기화 유지 (Form 필드가 아니므로)
-                setState(() {
-                  _editingBook = _editingBook.copyWith(memo: value);
-                });
-              },
-            ),
+            ],
 
             const SizedBox(height: 40),
 

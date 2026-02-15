@@ -322,7 +322,10 @@ class _ReportViewState extends ConsumerState<ReportView> {
                       itemCount: stats.readBooks.length,
                       separatorBuilder: (_, __) => const SizedBox(height: 12),
                       itemBuilder: (context, index) {
-                        final book = stats.readBooks[index];
+                        final item = stats.readBooks[index];
+                        final book = item.book;
+                        final record = item.record;
+
                         return Container(
                           decoration: BoxDecoration(
                             color: Colors.white,
@@ -352,16 +355,16 @@ class _ReportViewState extends ConsumerState<ReportView> {
                               ),
                             ),
                             subtitle: Text(
-                              "${book.author} | ${book.totalUnit}p\n완독: ${DateFormat('yyyy.MM.dd').format(book.finishedAt!)}",
+                              "${book.author} | ${book.totalUnit}p\n완독: ${DateFormat('yyyy.MM.dd').format(record.finishedAt!)}",
                               style: TextStyle(
                                 color: Colors.grey[600],
                                 fontSize: 12,
                               ),
                             ),
                             trailing:
-                                book.rating != null
+                                record.rating != null
                                     ? Text(
-                                      "★ ${book.rating}",
+                                      "★ ${record.rating}",
                                       style: const TextStyle(
                                         color: Colors.amber,
                                       ),
@@ -384,7 +387,7 @@ class _ReportViewState extends ConsumerState<ReportView> {
         onPressed: () {
           statsAsync.whenData((stats) {
             _showSummaryReceipt(
-              stats.readBooks,
+              stats.readBooks.map((e) => e.book).toList(),
               stats.totalPages,
               stats.totalBooks,
             );

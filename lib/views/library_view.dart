@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../models/book_model.dart';
-import '../viewmodels/book_view_model.dart';
+import '../providers/book_provider.dart';
 import '../theme/book_theme.dart';
 import '../viewmodels/theme_view_model.dart';
 
@@ -78,9 +78,8 @@ class _LibraryViewState extends ConsumerState<LibraryView> {
 
   @override
   Widget build(BuildContext context) {
-    final booksAsyncValue = ref.watch(bookViewModelProvider);
-    // 현재 테마는 SpineWidget이 개별적으로 구독 (또는 여기서 구독해서 전달 가능)
-    // 하지만 SpineWidget이 ConsumerWidget이 되는 게 더 깔끔함.
+    // [Changed] bookViewModleProvider -> bookListProvider (Firestore)
+    final booksAsyncValue = ref.watch(bookListProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -109,7 +108,23 @@ class _LibraryViewState extends ConsumerState<LibraryView> {
         child: booksAsyncValue.when(
           data: (books) {
             if (books.isEmpty) {
-              return const Center(child: Text("서재가 비어있습니다."));
+              return Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      PhosphorIcons.books(),
+                      size: 64,
+                      color: Colors.grey[300],
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      "첫 번째 책을 등록해보세요!",
+                      style: TextStyle(color: Colors.grey, fontSize: 16),
+                    ),
+                  ],
+                ),
+              );
             }
 
             return SingleChildScrollView(
@@ -139,6 +154,11 @@ class _LibraryViewState extends ConsumerState<LibraryView> {
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (err, stack) => Center(child: Text("Error: $err")),
         ),
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => context.push('/add'),
+        backgroundColor: Colors.black,
+        child: const Icon(Icons.add, color: Colors.white),
       ),
     );
   }
