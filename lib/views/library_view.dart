@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:phosphor_flutter/phosphor_flutter.dart';
-import '../models/book_model.dart';
-import '../providers/book_provider.dart';
-import '../theme/book_theme.dart';
-import '../viewmodels/theme_view_model.dart';
+import '../../models/book_model.dart';
+import '../../providers/book_provider.dart';
+import 'widgets/book_cover_widget.dart';
+import 'widgets/book_spine_widget.dart';
+
+import '../../viewmodels/theme_view_model.dart';
+import '../../theme/book_theme.dart';
 
 class LibraryView extends ConsumerStatefulWidget {
   const LibraryView({super.key});
@@ -15,62 +17,88 @@ class LibraryView extends ConsumerStatefulWidget {
 }
 
 class _LibraryViewState extends ConsumerState<LibraryView> {
-  // 테마 변경 바텀시트
-  void _showThemePicker(BuildContext context) {
+  void _showThemePicker() {
     showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
+      backgroundColor: Colors.transparent,
       builder: (context) {
-        return Consumer(
-          builder: (context, ref, _) {
-            final currentTheme = ref.watch(themeViewModelProvider);
-            return Padding(
-              padding: const EdgeInsets.symmetric(vertical: 20),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Padding(
-                    padding: EdgeInsets.only(bottom: 16),
-                    child: Text(
-                      "Choose a Theme 🎨",
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                  ...BookThemeType.values.map((type) {
-                    final isSelected = currentTheme == type;
-                    return ListTile(
-                      leading: CircleAvatar(
-                        backgroundColor: BookTheme.getPalette(type)[0],
-                      ),
-                      title: Text(
-                        BookTheme.getName(type),
-                        style: TextStyle(
-                          fontWeight:
-                              isSelected ? FontWeight.bold : FontWeight.normal,
-                        ),
-                      ),
-                      trailing:
-                          isSelected
-                              ? const Icon(Icons.check, color: Colors.green)
-                              : null,
-                      onTap: () {
-                        ref
-                            .read(themeViewModelProvider.notifier)
-                            .setTheme(type);
-                        Navigator.pop(context);
-                      },
-                    );
-                  }),
-                ],
+        return Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.only(
+              topLeft: Radius.circular(24),
+              topRight: Radius.circular(24),
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Padding(
+                padding: EdgeInsets.all(16.0),
+                child: Text(
+                  "테마 선택",
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
               ),
-            );
-          },
+              Flexible(
+                child: SingleChildScrollView(
+                  child: Wrap(
+                    spacing: 16,
+                    runSpacing: 16,
+                    alignment: WrapAlignment.center,
+                    children:
+                        BookThemeType.values.map((type) {
+                          final isSelected =
+                              ref.read(themeViewModelProvider) == type;
+                          return GestureDetector(
+                            onTap: () {
+                              ref
+                                  .read(themeViewModelProvider.notifier)
+                                  .setTheme(type);
+                              Navigator.pop(context);
+                            },
+                            child: Container(
+                              width: 80,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              decoration: BoxDecoration(
+                                color:
+                                    isSelected
+                                        ? Colors.grey[200]
+                                        : Colors.transparent,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color:
+                                      isSelected
+                                          ? Colors.black
+                                          : Colors.transparent,
+                                  width: 2,
+                                ),
+                              ),
+                              child: Column(
+                                children: [
+                                  CircleAvatar(
+                                    backgroundColor:
+                                        BookTheme.getPalette(type)[2],
+                                    radius: 20,
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    BookTheme.getName(
+                                      type,
+                                    ).split(' ')[0], // Simple name
+                                    style: const TextStyle(fontSize: 12),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 32),
+            ],
+          ),
         );
       },
     );
@@ -78,200 +106,270 @@ class _LibraryViewState extends ConsumerState<LibraryView> {
 
   @override
   Widget build(BuildContext context) {
-    // [Changed] bookViewModleProvider -> bookListProvider (Firestore)
-    final booksAsyncValue = ref.watch(bookListProvider);
+    final booksAsync = ref.watch(bookListProvider);
+    final theme = ref.watch(themeViewModelProvider);
+    final palette = BookTheme.getPalette(theme);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          "My Library",
-          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black),
-        ),
-        backgroundColor: const Color(0xFFFFFBFA), // 종이 질감 아이보리
-        elevation: 0,
-        actions: [
-          // [Theme Picker] 테마 변경 버튼
-          IconButton(
-            onPressed: () => _showThemePicker(context),
-            icon: const Icon(Icons.palette_outlined, color: Colors.black),
-          ),
-          IconButton(
-            onPressed: () {}, // 검색
-            icon: Icon(PhosphorIcons.magnifyingGlass(), color: Colors.black),
-          ),
-        ],
-      ),
-      body: Container(
-        width: double.infinity,
-        height: double.infinity,
-        color: const Color(0xFFFFFBFA),
-        child: booksAsyncValue.when(
-          data: (books) {
-            if (books.isEmpty) {
-              return Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      PhosphorIcons.books(),
-                      size: 64,
-                      color: Colors.grey[300],
-                    ),
-                    const SizedBox(height: 16),
-                    const Text(
-                      "첫 번째 책을 등록해보세요!",
-                      style: TextStyle(color: Colors.grey, fontSize: 16),
-                    ),
-                  ],
-                ),
-              );
-            }
+      backgroundColor: const Color(0xFFFDFBF7), // Warm paper-like background
+      body: booksAsync.when(
+        data: (books) {
+          // Filter books by status
+          final readingBooks =
+              books.where((b) => b.status == BookStatus.reading).toList();
+          final wishBooks =
+              books.where((b) => b.status == BookStatus.wish).toList();
+          final doneBooks =
+              books.where((b) => b.status == BookStatus.done).toList();
 
-            return SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-              child: CustomPaint(
-                painter: _ShelfPainter(), // 선반 라인 그리기
-                child: Padding(
-                  padding: const EdgeInsets.only(bottom: 40), // 마지막 선반 여유
-                  child: Wrap(
-                    direction: Axis.horizontal,
-                    alignment: WrapAlignment.start,
-                    spacing: 4.0, // 책 사이 간격
-                    runSpacing: 40.0, // 선반 위아래 간격 (책110 + 선반12 + 여유)
-                    crossAxisAlignment: WrapCrossAlignment.end, // 바닥 정렬
-                    children:
-                        books.map((book) {
-                          return GestureDetector(
-                            onTap: () => context.push('/detail', extra: book),
-                            child: _SolidSpineWidget(book: book),
-                          );
-                        }).toList(),
+          return CustomScrollView(
+            slivers: [
+              // 1. App Bar Area
+              SliverAppBar(
+                title: const Text(
+                  "서재",
+                  style: TextStyle(
+                    color: Colors.black,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
+                backgroundColor: const Color(0xFFFDFBF7),
+                floating: true,
+                pinned: true,
+                elevation: 0,
+                centerTitle: false,
+                actions: [
+                  IconButton(
+                    onPressed: _showThemePicker,
+                    icon: const Icon(
+                      Icons.palette_outlined,
+                      color: Colors.black,
+                    ),
+                  ),
+                ],
               ),
-            );
-          },
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (err, stack) => Center(child: Text("Error: $err")),
-        ),
+
+              // 2. Section 1: Reading Books (The Carousel)
+              SliverToBoxAdapter(child: _buildSectionTitle("읽고 있는 책 📖")),
+              SliverToBoxAdapter(child: _buildReadingSection(readingBooks)),
+
+              // 3. Section 2: Wish Books (The Shelf)
+              SliverToBoxAdapter(child: _buildSectionTitle("읽고 싶은 책 ✨")),
+              SliverToBoxAdapter(child: _buildWishSection(wishBooks, palette)),
+
+              // 4. Section 3: Finished Books (The Archive)
+              SliverToBoxAdapter(child: _buildSectionTitle("명예의 전당 🏆")),
+              SliverToBoxAdapter(child: _buildDoneSection(doneBooks, palette)),
+
+              const SliverPadding(padding: EdgeInsets.only(bottom: 80)),
+            ],
+          );
+        },
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (err, stack) => Center(child: Text("Error: $err")),
       ),
-      floatingActionButton: FloatingActionButton(
+      floatingActionButton: FloatingActionButton.extended(
         onPressed: () => context.push('/add'),
+        label: const Text("책 추가"),
+        icon: const Icon(Icons.add),
         backgroundColor: Colors.black,
-        child: const Icon(Icons.add, color: Colors.white),
+        foregroundColor: Colors.white,
       ),
     );
   }
-}
 
-// [Painter] 나무 선반 그리기 (두께감 있는 받침대)
-class _ShelfPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint =
-        Paint()
-          ..color = const Color(0xFFD7CCC8) // 연한 나무색
-          ..style = PaintingStyle.fill;
-
-    // 책 높이(110) + runSpacing(40) = 150 간격 예상
-    // 선반은 책 바로 밑(110)에 위치. 두께 12.0
-    const double bookHeight = 110.0;
-    const double runSpacing = 40.0;
-    const double shelfThickness = 12.0;
-
-    // 첫 번째 줄부터 화면 끝까지 반복
-    for (
-      double y = bookHeight;
-      y < size.height + 150;
-      y += (bookHeight + runSpacing)
-    ) {
-      // 선반 직사각형 그리기
-      canvas.drawRect(Rect.fromLTWH(0, y, size.width, shelfThickness), paint);
-    }
+  Widget _buildSectionTitle(String title) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 32, 24, 16),
+      child: Text(
+        title,
+        style: const TextStyle(
+          fontSize: 20,
+          fontWeight: FontWeight.bold,
+          letterSpacing: -0.5,
+        ),
+      ),
+    );
   }
 
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-// [Theme 10] Solid Pastel Style (Grounded & Clean)
-class _SolidSpineWidget extends ConsumerWidget {
-  final Book book;
-
-  const _SolidSpineWidget({required this.book});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    // 1. 랜덤 시드 및 해시
-    final int seed =
-        (book.id.isNotEmpty ? book.id.hashCode : book.title.hashCode);
-    final int hash = seed ^ (book.totalUnit * 13) ^ (book.title.length * 7);
-
-    // 2. 동적 테마 팔레트 (ThemeViewModel 사용)
-    final currentTheme = ref.watch(themeViewModelProvider);
-    final palette = BookTheme.getPalette(currentTheme);
-    final int colorIndex = hash.abs() % palette.length;
-    final baseColor = palette[colorIndex];
-
-    // 텍스트 색상 결정 (어두운 배경에선 흰색, 밝은 배경에선 진한 잉크색)
-    final textColor = colorIndex >= 3 ? Colors.white : const Color(0xFF2D2D2D);
-
-    // 3. 크기 계산 (높이 고정)
-    final double width = (book.totalUnit / 10).clamp(32.0, 55.0);
-    const double height = 110.0;
-
-    // 4. 제목 정제 (태그 제거)
-    String cleanTitle = book.title.replaceAll(RegExp(r'\s*\(.*?\)'), '').trim();
-
-    return Container(
-      width: width,
-      height: height,
-      margin: const EdgeInsets.only(right: 0),
-      decoration: BoxDecoration(
-        color: baseColor,
-        // 위는 둥글게, 아래는 평평하게 (선반에 안착된 느낌)
-        borderRadius: const BorderRadius.vertical(
-          top: Radius.circular(6.0),
-          bottom: Radius.circular(1.0),
+  // Section 1: PageView for Reading Books
+  Widget _buildReadingSection(List<Book> books) {
+    if (books.isEmpty) {
+      return Container(
+        height: 280,
+        alignment: Alignment.center,
+        margin: const EdgeInsets.symmetric(horizontal: 24),
+        decoration: BoxDecoration(
+          color: Colors.grey[100],
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.grey[300]!),
         ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 2,
-            offset: const Offset(1, 1),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.menu_book, size: 48, color: Colors.grey[400]),
+            const SizedBox(height: 16),
+            Text(
+              "독서를 시작해보세요",
+              style: TextStyle(color: Colors.grey[600], fontSize: 16),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return SizedBox(
+      height: 320, // Cover (280) + Padding
+      child: PageView.builder(
+        controller: PageController(viewportFraction: 0.6), // Tight formatting
+        itemCount: books.length,
+        itemBuilder: (context, index) {
+          final book = books[index];
+          // Scale effect for the current item can be added here if needed using a listener
+          return BookCoverWidget(
+            book: book,
+            onTap: () => context.push('/detail/${book.id}', extra: book),
+          );
+        },
+      ),
+    );
+  }
+
+  // Section 2: Horizontal List with Shelf for Wish Books
+  Widget _buildWishSection(List<Book> books, List<Color> palette) {
+    return SizedBox(
+      height: 160, // Spine (140) + Shelf (8) + Padding
+      child: Stack(
+        alignment: Alignment.bottomCenter,
+        children: [
+          // Shelf Line
+          Positioned(
+            bottom: 0,
+            left: 20,
+            right: 20,
+            child: Container(
+              height: 12,
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(4),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    offset: const Offset(0, 2),
+                    blurRadius: 2,
+                  ),
+                ],
+              ),
+            ),
           ),
+          // Books
+          if (books.isEmpty)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.only(bottom: 20),
+                child: Text("찜한 책이 없습니다", style: TextStyle(color: Colors.grey)),
+              ),
+            )
+          else
+            ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              itemCount: books.length,
+              separatorBuilder:
+                  (_, __) => const SizedBox(width: 4), // Tight shelf look
+              itemBuilder: (context, index) {
+                final book = books[index];
+                return Column(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    BookSpineWidget(
+                      book: book,
+                      palette: palette,
+                      // width: 28, // Removed for dynamic width
+                      height:
+                          120 +
+                          (index % 3) *
+                              10, // Slight height variation for realism
+                      onTap:
+                          () => context.push('/detail/${book.id}', extra: book),
+                    ),
+                    const SizedBox(height: 8), // Start from top of shelf
+                  ],
+                );
+              },
+            ),
         ],
       ),
-      child: Center(
-        child: FittedBox(
-          fit: BoxFit.scaleDown,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children:
-                cleanTitle.split('').map((char) {
-                  if (char == ' ') {
-                    return const SizedBox(height: 4.0);
-                  }
-                  final isRotatedSymbol = [':', '-', '(', ')'].contains(char);
+    );
+  }
 
-                  Widget textWidget = Text(
-                    char,
-                    style: TextStyle(
-                      color: textColor,
-                      fontSize: 11.0,
-                      fontWeight: FontWeight.w600,
-                      height: 1.1,
-                      fontFamily: 'sans-serif',
-                    ),
-                  );
-
-                  if (isRotatedSymbol) {
-                    return RotatedBox(quarterTurns: 1, child: textWidget);
-                  }
-                  return textWidget;
-                }).toList(),
+  // Section 3: Done Books (Strict Grid: 5 Columns)
+  Widget _buildDoneSection(List<Book> books, List<Color> palette) {
+    return SizedBox(
+      height: 160, // Spine (140) + Shelf (8) + Padding
+      child: Stack(
+        alignment: Alignment.bottomCenter,
+        children: [
+          // Shelf Line
+          Positioned(
+            bottom: 0,
+            left: 20,
+            right: 20,
+            child: Container(
+              height: 12,
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(4),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    offset: const Offset(0, 2),
+                    blurRadius: 2,
+                  ),
+                ],
+              ),
+            ),
           ),
-        ),
+          // Books
+          if (books.isEmpty)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.only(bottom: 20),
+                child: Text(
+                  "완독한 책이 없습니다",
+                  style: TextStyle(color: Colors.grey),
+                ),
+              ),
+            )
+          else
+            ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              itemCount: books.length,
+              separatorBuilder:
+                  (_, __) => const SizedBox(width: 4), // Tight shelf look
+              itemBuilder: (context, index) {
+                final book = books[index];
+                return Column(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    BookSpineWidget(
+                      book: book,
+                      palette: palette,
+                      // width: 28, // Removed for dynamic width
+                      height:
+                          120 +
+                          (index % 3) *
+                              10, // Slight height variation for realism
+                      onTap:
+                          () => context.push('/detail/${book.id}', extra: book),
+                    ),
+                    const SizedBox(height: 8), // Start from top of shelf
+                  ],
+                );
+              },
+            ),
+        ],
       ),
     );
   }

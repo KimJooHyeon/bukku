@@ -51,7 +51,7 @@ class AlbumView extends ConsumerWidget {
               final book = books[index];
               return GestureDetector(
                 onTap: () {
-                  context.push('/detail', extra: book);
+                  context.push('/detail/${book.id}', extra: book);
                 },
                 child: _buildCoverItem(book),
               );

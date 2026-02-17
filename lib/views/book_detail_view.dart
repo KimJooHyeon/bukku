@@ -13,9 +13,10 @@ import '../providers/book_provider.dart';
 import 'widgets/receipt_widget.dart';
 
 class BookDetailView extends ConsumerStatefulWidget {
-  final Book book;
+  final String bookId;
+  final Book? book; // Optional initial data (for smooth transition)
 
-  const BookDetailView({super.key, required this.book});
+  const BookDetailView({super.key, required this.bookId, this.book});
 
   @override
   ConsumerState<BookDetailView> createState() => _BookDetailViewState();
@@ -25,6 +26,7 @@ class _BookDetailViewState extends ConsumerState<BookDetailView> {
   // 수정 중인 책 상태를 로컬에서 관리 (불변 객체이므로 copyWith로 교체)
   late Book _editingBook;
   bool _isLoading = false;
+  bool _isInitialized = false;
 
   // [Receipt] 캡처를 위한 컨트롤러
   final ScreenshotController _screenshotController = ScreenshotController();
@@ -32,7 +34,30 @@ class _BookDetailViewState extends ConsumerState<BookDetailView> {
   @override
   void initState() {
     super.initState();
-    _editingBook = widget.book;
+    if (widget.book != null) {
+      _editingBook = widget.book!;
+      _isInitialized = true;
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // 초기 데이터가 없거나, Provider로부터 최신 데이터를 받아와야 할 경우 처리
+    if (!_isInitialized) {
+      final booksAsync = ref.read(bookListProvider);
+      booksAsync.whenData((books) {
+        try {
+          final book = books.firstWhere((b) => b.id == widget.bookId);
+          setState(() {
+            _editingBook = book;
+            _isInitialized = true;
+          });
+        } catch (e) {
+          // 책을 찾을 수 없음 (삭제됨 등)
+        }
+      });
+    }
   }
 
   // [Receipt] 영수증 캡처 및 공유
@@ -92,6 +117,7 @@ class _BookDetailViewState extends ConsumerState<BookDetailView> {
                 ],
               ),
         );
+        print("Update Book Error: $e"); // Debug log only
       }
     } finally {
       if (mounted) {
@@ -264,6 +290,11 @@ class _BookDetailViewState extends ConsumerState<BookDetailView> {
 
   @override
   Widget build(BuildContext context) {
+    // 초기화되지 않았으면 로딩 표시
+    if (!_isInitialized) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
     // 배경색: 약간 어두운 크림색
     return Scaffold(
       backgroundColor: const Color(0xFFFDFBF7),
@@ -527,7 +558,7 @@ class _BookDetailViewState extends ConsumerState<BookDetailView> {
               const SizedBox(height: 16),
 
               // [N회독] 다음 회독 시작 버튼
-              if (widget.book.status == BookStatus.done)
+              if (_editingBook.status == BookStatus.done)
                 SizedBox(
                   width: double.infinity,
                   child: OutlinedButton.icon(

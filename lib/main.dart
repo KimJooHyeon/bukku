@@ -34,11 +34,13 @@ void main() async {
   );
 }
 
-class BukkuApp extends StatelessWidget {
+class BukkuApp extends ConsumerWidget {
   const BukkuApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final router = ref.watch(routerProvider);
+
     return MaterialApp.router(
       title: '북끄',
       debugShowCheckedModeBanner: false,
@@ -66,7 +68,7 @@ class BukkuApp extends StatelessWidget {
         ),
       ),
       // [GoRouter 연결]
-      routerConfig: routerConfig,
+      routerConfig: router,
     );
   }
 }

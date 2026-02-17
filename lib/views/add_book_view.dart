@@ -1,7 +1,9 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import 'package:flutter_rating_bar/flutter_rating_bar.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../models/book_model.dart';
@@ -21,9 +23,12 @@ class _AddBookViewState extends ConsumerState<AddBookView> {
   final TextEditingController _titleController = TextEditingController();
   final TextEditingController _authorController = TextEditingController();
   final TextEditingController _totalPageController = TextEditingController();
+  final TextEditingController _reviewController =
+      TextEditingController(); // [New]
 
   // 독서 상태 (Enum)
   BookStatus _status = BookStatus.reading;
+  double _rating = 0.0; // [New]
 
   // [Image] 선택된 이미지 (Web/Mobile 호환)
   XFile? _selectedImage;
@@ -36,6 +41,7 @@ class _AddBookViewState extends ConsumerState<AddBookView> {
     _titleController.dispose();
     _authorController.dispose();
     _totalPageController.dispose();
+    _reviewController.dispose(); // [New]
     super.dispose();
   }
 
@@ -89,6 +95,11 @@ class _AddBookViewState extends ConsumerState<AddBookView> {
             readCount: 1,
             startedAt: DateTime.now(),
             finishedAt: _status == BookStatus.done ? DateTime.now() : null,
+            rating: _status == BookStatus.done ? _rating : null, // [New]
+            review:
+                _status == BookStatus.done
+                    ? _reviewController.text
+                    : null, // [New]
           ),
         ],
       );
@@ -107,6 +118,7 @@ class _AddBookViewState extends ConsumerState<AddBookView> {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('오류 발생: $e')));
+        print("Add Book Error: $e"); // Debug log
       }
     } finally {
       if (mounted) {
@@ -223,6 +235,7 @@ class _AddBookViewState extends ConsumerState<AddBookView> {
                 keyboardType: TextInputType.number,
                 decoration: const InputDecoration(
                   labelText: '전체 분량 (페이지 수)',
+                  helperText: '숫자만 입력해주세요',
                   border: OutlineInputBorder(),
                   filled: true,
                   fillColor: Colors.white,
@@ -236,6 +249,7 @@ class _AddBookViewState extends ConsumerState<AddBookView> {
                   }
                   return null;
                 },
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
               ),
               const SizedBox(height: 24),
 
@@ -261,6 +275,62 @@ class _AddBookViewState extends ConsumerState<AddBookView> {
                     _status = value!;
                   });
                 },
+              ),
+              const SizedBox(height: 24),
+
+              // [Animation] 완독 시 추가 입력 필드 (별점, 한줄평)
+              AnimatedCrossFade(
+                firstChild: Container(),
+                secondChild: Column(
+                  children: [
+                    const Text(
+                      "나의 평가",
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 12),
+                    // [RatingBar]
+                    RatingBar.builder(
+                      initialRating: _rating,
+                      minRating: 0.5,
+                      direction: Axis.horizontal,
+                      allowHalfRating: true,
+                      itemCount: 5,
+                      itemPadding: const EdgeInsets.symmetric(horizontal: 4.0),
+                      itemBuilder:
+                          (context, _) => Icon(
+                            PhosphorIcons.star(PhosphorIconsStyle.fill),
+                            color: Colors.amber,
+                          ),
+                      onRatingUpdate: (rating) {
+                        setState(() {
+                          _rating = rating;
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 20),
+                    // [Review]
+                    TextFormField(
+                      controller: _reviewController,
+                      maxLines: 3,
+                      decoration: InputDecoration(
+                        labelText: '한줄평',
+                        hintText: "이 책에 대한 생각이나 메모를 남겨주세요.",
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: BorderSide(color: Colors.grey.shade300),
+                        ),
+                        filled: true,
+                        fillColor: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                  ],
+                ),
+                crossFadeState:
+                    _status == BookStatus.done
+                        ? CrossFadeState.showSecond
+                        : CrossFadeState.showFirst,
+                duration: const Duration(milliseconds: 300),
               ),
               const SizedBox(height: 32),
 

@@ -35,8 +35,17 @@ class BookRepository {
 
     // 저장 시 생성 시간 추가
     final bookToSave = book.copyWith(createdAt: DateTime.now());
+    final json = bookToSave.toJson();
 
-    await collection.add(bookToSave.toJson());
+    // [Fix] Firestore 저장 시 중첩 객체(_ReadingRecord)가 직렬화되지 않는 문제 해결
+    if (json['records'] is List) {
+      json['records'] =
+          (json['records'] as List).map((e) {
+            return e is ReadingRecord ? e.toJson() : e;
+          }).toList();
+    }
+
+    await collection.add(json);
   }
 
   // 3. Update Book
@@ -45,7 +54,17 @@ class BookRepository {
     if (collection == null) throw Exception("User not logged in");
     if (book.id.isEmpty) throw Exception("Book ID is empty");
 
-    await collection.doc(book.id).update(book.toJson());
+    final json = book.toJson();
+
+    // [Fix] Firestore 저장 시 중첩 객체(_ReadingRecord)가 직렬화되지 않는 문제 해결
+    if (json['records'] is List) {
+      json['records'] =
+          (json['records'] as List).map((e) {
+            return e is ReadingRecord ? e.toJson() : e;
+          }).toList();
+    }
+
+    await collection.doc(book.id).update(json);
   }
 
   // 4. Delete Book
